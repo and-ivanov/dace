@@ -5,6 +5,7 @@ from functools import reduce
 from typing import Iterator, Tuple, List
 
 import onnx
+import copy
 
 import dace
 import dace.sdfg.nodes as nd
