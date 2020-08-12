@@ -710,6 +710,158 @@ for schema in onnx.defs.get_all_schemas():
         for name, attr in op_attributes.items():
             setattr(self, name, attr)
 
+        split = None
+        onnx_op_name = None
+        op_name = str(self)
+        if "_" in op_name:
+            split = op_name.split('_')
+            onnx_op_name = split[0]
+        else:
+            onnx_op_name = op_name
+        
+        @dace.library.expansion
+        class ExpandDiv(ExpandTransformation):
+            environments = []
+            @staticmethod
+            def expansion(node, state, sdfg):
+                node.validate(sdfg, state)
+
+                in_edges = state.in_edges(node)
+                out_edges = state.out_edges(node)
+
+                atype = copy.deepcopy(sdfg.arrays[in_edges[0].data.data])
+                btype = copy.deepcopy(sdfg.arrays[in_edges[1].data.data])
+                ctype = copy.deepcopy(sdfg.arrays[out_edges[0].data.data])
+        
+                @dace.program
+                def divop(A: atype, B: btype, C: ctype):
+                    C[:] = A / B
+                return divop.to_sdfg()
+ 
+        @dace.library.expansion
+        class ExpandMul(ExpandTransformation):
+            environments = []
+            @staticmethod
+            def expansion(node, state, sdfg):
+                node.validate(sdfg, state)
+                
+                in_edges = state.in_edges(node)
+                out_edges = state.out_edges(node)
+
+                atype = copy.deepcopy(sdfg.arrays[in_edges[0].data.data])
+                btype = copy.deepcopy(sdfg.arrays[in_edges[1].data.data])
+                ctype = copy.deepcopy(sdfg.arrays[out_edges[0].data.data])
+        
+                @dace.program
+                def mulop(A: atype, B: btype, C: ctype):
+                    C[:] = A * B
+                return mulop.to_sdfg()
+
+        @dace.library.expansion
+        class ExpandAdd(ExpandTransformation):
+            environments = []
+            @staticmethod
+            def expansion(node, state, sdfg):
+                node.validate(sdfg, state)
+
+                in_edges = state.in_edges(node)
+                out_edges = state.out_edges(node)
+
+                atype = copy.deepcopy(sdfg.arrays[in_edges[0].data.data])
+                btype = copy.deepcopy(sdfg.arrays[in_edges[1].data.data])
+                ctype = copy.deepcopy(sdfg.arrays[out_edges[0].data.data])
+        
+                @dace.program
+                def addop(A: atype, B: btype, C: ctype):
+                    C[:] = A + B
+                return addop.to_sdfg()
+ 
+        @dace.library.expansion
+        class ExpandSub(ExpandTransformation):
+            environments = []
+            @staticmethod
+            def expansion(node, state, sdfg):
+                node.validate(sdfg, state)
+                
+                in_edges = state.in_edges(node)
+                out_edges = state.out_edges(node)
+
+                atype = copy.deepcopy(sdfg.arrays[in_edges[0].data.data])
+                btype = copy.deepcopy(sdfg.arrays[in_edges[1].data.data])
+                ctype = copy.deepcopy(sdfg.arrays[out_edges[0].data.data])
+        
+                @dace.program
+                def subop(A: atype, B: btype, C: ctype):
+                    C[:] = A - B
+                return subop.to_sdfg()
+
+        @dace.library.expansion
+        class ExpandSoftmax(ExpandTransformation):
+        
+            environments = []
+        
+            @staticmethod
+            def expansion(node, state, sdfg):
+                node.validate(sdfg, state)
+
+                in_edges = state.in_edges(node)
+                mm = in_edges[0].data.subset.size()[0]
+                nn = in_edges[0].data.subset.size()[1]
+                gg = in_edges[0].data.subset.size()[2]
+                M = str(mm)
+                N = str(nn)
+                G = str(gg)
+                sdfg_exp = dace.SDFG('softmaxExpansion')
+                sdfg_exp.add_array('input', (mm, nn, gg), dace.float32)
+                sdfg_exp.add_array('output', (mm, nn, gg), dace.float32)
+                state_exp = sdfg_exp.add_state()
+                ome, omx = state_exp.add_map('outer_map', dict(i='0:' + M, j='0:' + N))
+                ime, imx = state_exp.add_map('inner_map', dict(k='0:' + G))
+
+                tmp_max = state_exp.add_transient('tmp_max', (1, ), dace.float32)
+                tmp_sum = state_exp.add_transient('tmp_sum', (1, ), dace.float32)
+                tmp_out = state_exp.add_transient('tmp_out', (mm, nn, gg), dace.float32)
+                input = state_exp.add_read('input')
+                output = state_exp.add_access('output')
+
+                red1 = state_exp.add_reduce('lambda a1, b1: max(a1, b1)', None, 0)
+                texp1 = state_exp.add_tasklet('tasklet1', {'a2', 'b2'}, {'c2'}, 'c2 = exp(a2-b2)')
+
+                state_exp.add_edge(input, None, ome, None, dace.Memlet.simple(input, '0:'+M+', 0:'+N+', 0:'+G))
+                state_exp.add_edge(ome, None, red1, None, dace.Memlet.simple(input, 'i, j, 0:'+G))
+                state_exp.add_edge(red1, None, tmp_max, None, dace.Memlet.simple(tmp_max, '0'))
+
+                state_exp.add_edge(ome, None, ime, None, dace.Memlet.simple(input, 'i, j, 0:'+G))
+                state_exp.add_edge(tmp_max, None, ime, None, dace.Memlet.simple(tmp_max, '0'))
+
+                state_exp.add_edge(ime, None, texp1, "a2", dace.Memlet.simple(input, 'i, j, k'))
+                state_exp.add_edge(ime, None, texp1, "b2", dace.Memlet.simple(tmp_max, '0'))
+                state_exp.add_edge(texp1, "c2", imx, None, dace.Memlet.simple(tmp_out, 'i, j, k'))
+                state_exp.add_edge(imx, None, omx, None, dace.Memlet.simple(tmp_out, 'i, j, 0:'+G))
+                state_exp.add_edge(omx, None, tmp_out, None, dace.Memlet.simple(tmp_out, '0:'+M+', 0:'+N+', 0:'+G))
+
+                ome1, omx1 = state_exp.add_map('outer_map1', dict(i='0:' + M, j='0:' + N))
+                ime1, imx1 = state_exp.add_map('inner_map1', dict(k='0:' + G))
+                red2 = state_exp.add_reduce('lambda a3, b3: a3 + b3', None, 0)
+                texp2 = state_exp.add_tasklet('tasklet2', {'a4', 'b4'}, {'c4'}, 'c4 = a4 / b4')
+
+                state_exp.add_edge(tmp_out, None, ome1, None, dace.Memlet.simple(tmp_out, '0:'+M+', 0:'+N+', 0:'+G))
+                state_exp.add_edge(ome1, None, red2, None, dace.Memlet.simple(tmp_out, 'i, j, 0:'+G))
+                state_exp.add_edge(red2, None, tmp_sum, None, dace.Memlet.simple(tmp_sum, '0'))
+
+                state_exp.add_edge(ome1, None, ime1, None, dace.Memlet.simple(tmp_out, 'i, j, 0:'+G))
+                state_exp.add_edge(tmp_sum, None, ime1, None, dace.Memlet.simple(tmp_sum, '0'))
+
+                state_exp.add_edge(ime1, None, texp2, "a4", dace.Memlet.simple(tmp_out, 'i, j, k'))
+                state_exp.add_edge(ime1, None, texp2, "b4", dace.Memlet.simple(tmp_sum, '0'))
+                state_exp.add_edge(texp2, "c4", imx1, None, dace.Memlet.simple(output, 'i, j, k'))
+                state_exp.add_edge(imx1, None, omx1, None, dace.Memlet.simple(output, 'i, j, 0:'+G))
+                state_exp.add_edge(omx1, None, output, None, dace.Memlet.simple(output, '0:'+M+', 0:'+N+', 0:'+G))
+
+                sdfg_exp.fill_scope_connectors()
+
+                return sdfg_exp
+
         # Inline the class such that "self" is included in the expansion
         @dace.library.expansion
         class Expansion(ExpandTransformation):
@@ -726,8 +878,27 @@ for schema in onnx.defs.get_all_schemas():
 
                 return self.expansion(node, state, sdfg)
 
-        self.implementations['default'] = Expansion
-        Expansion._match_node = self
+        if onnx_op_name == "Div":
+            self.implementations['default'] = ExpandDiv
+            ExpandDiv._match_node = self
+        elif onnx_op_name == "Mul":
+            self.implementations['default'] = ExpandMul
+            ExpandMul._match_node = self
+        elif onnx_op_name == "Add":
+            self.implementations['default'] = ExpandAdd
+            ExpandAdd._match_node = self
+        elif onnx_op_name == "Sub":
+            self.implementations['default'] = ExpandSub
+            ExpandSub._match_node = self
+        elif onnx_op_name == "Softmax":
+            self.implementations['default'] = ExpandSoftmax
+            ExpandSoftmax._match_node = self
+        else:
+            self.implementations['default'] = Expansion
+            Expansion._match_node = self
+
+        #self.implementations['default'] = Expansion
+        #Expansion._match_node = self
         self.implementation = 'default'
 
     attrs['__init__'] = __init__
