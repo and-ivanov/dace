@@ -5,6 +5,7 @@ from functools import reduce
 from typing import Iterator, Tuple, List
 
 import onnx
+import copy
 
 import dace
 import dace.sdfg.nodes as nd
@@ -796,6 +797,67 @@ for schema in onnx.defs.get_all_schemas():
                 return subop.to_sdfg()
 
         @dace.library.expansion
+        class ExpandMatMul(ExpandTransformation):
+            environments = []
+            @staticmethod
+            def expansion(node, state, sdfg):
+                node.validate(sdfg, state)
+
+                in_edges = state.in_edges(node)
+                out_edges = state.out_edges(node)
+
+                atype = copy.deepcopy(sdfg.arrays[in_edges[0].data.data])
+                btype = copy.deepcopy(sdfg.arrays[in_edges[1].data.data])
+                ctype = copy.deepcopy(sdfg.arrays[out_edges[0].data.data])
+        
+                @dace.program
+                def matmulop(A: atype, B: btype, Y: ctype):
+                    Y[:] = A @ B
+                return matmulop.to_sdfg()
+
+        @dace.library.expansion
+        class ExpandReduceSum(ExpandTransformation):
+        
+            environments = []
+        
+            @staticmethod
+            def expansion(node, state, sdfg):
+                node.validate(sdfg, state)
+
+                in_edges = state.in_edges(node)
+                mm = in_edges[0].data.subset.size()[0]
+                nn = in_edges[0].data.subset.size()[1]
+                gg = in_edges[0].data.subset.size()[2]
+                hh = in_edges[0].data.subset.size()[3]
+
+                M = str(mm)
+                N = str(nn)
+                G = str(gg)
+                H = str(hh)
+
+                sdfg_exp = dace.SDFG('reducesumExpansion')
+                sdfg_exp.add_array('data', (mm, nn, gg, hh), dace.float32)
+                sdfg_exp.add_array('reduced', (mm, gg, hh), dace.float32)
+                state_exp = sdfg_exp.add_state()
+
+                me, mx = state_exp.add_map('outer_map', dict(i='0:' + M, k='0:' + G, l='0:' + H))
+
+                data = state_exp.add_read('data')
+                reduced = state_exp.add_access('reduced')
+
+                redsum = state_exp.add_reduce('lambda a1, b1: a1 + b1', None, 0)
+                tmp_sum = state_exp.add_transient('tmp_sum', (1, ), dace.float32)
+
+                state_exp.add_edge(data, None, me, None, dace.Memlet.simple(data, '0:'+M+', 0:'+N+', 0:'+G+', 0:'+H))
+                state_exp.add_edge(me, None, redsum, None, dace.Memlet.simple(data, 'i, 0:'+N+', k, l'))
+                state_exp.add_edge(redsum, None, tmp_sum, None, dace.Memlet.simple(tmp_sum, '0'))
+                state_exp.add_edge(tmp_sum, None, mx, None, dace.Memlet.simple(reduced, 'i, k, l'))
+                state_exp.add_edge(mx, None, reduced, None, dace.Memlet.simple(reduced, '0:'+M+', 0:'+G+', 0:'+H))
+
+                sdfg_exp.fill_scope_connectors()
+                return sdfg_exp
+
+        @dace.library.expansion
         class ExpandSoftmax(ExpandTransformation):
         
             environments = []
@@ -893,6 +955,12 @@ for schema in onnx.defs.get_all_schemas():
         elif onnx_op_name == "Softmax":
             self.implementations['default'] = ExpandSoftmax
             ExpandSoftmax._match_node = self
+        elif onnx_op_name == "MatMul**":
+            self.implementations['default'] = ExpandMatMul
+            ExpandMatMul._match_node = self
+        elif onnx_op_name == "ReduceSum":
+            self.implementations['default'] = ExpandReduceSum
+            ExpandReduceSum._match_node = self
         else:
             self.implementations['default'] = Expansion
             Expansion._match_node = self

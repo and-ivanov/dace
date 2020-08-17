@@ -11,10 +11,13 @@ from dace.frontend.pytorch import DACEModule
 
 
 B = 2
-H = 16
-P = 64
+#H = 16
+#P = 64
+H = 4
+P = 16
 N = P*H
-SM, SN = 512, 512
+#SM, SN = 512, 512
+SM, SN = 8, 8
 #K, Q, V = (torch.randn([SM, B, N], requires_grad=True).cuda(),
 #           torch.randn([SN, B, N], requires_grad=True).cuda(),
 #           torch.randn([SM, B, N], requires_grad=True).cuda())
@@ -43,7 +46,9 @@ print(ort_outputs[0])
 
 
 
-assert np.allclose(dace_outputs[0], ort_outputs[0])
-assert np.allclose(dace_outputs[1], ort_outputs[1])
-assert np.allclose(pt_outputs[0].detach().numpy(), ort_outputs[0], rtol=8e-02)
-assert np.allclose(pt_outputs[1].detach().numpy(), ort_outputs[1], rtol=8e-02)
+assert np.allclose(dace_outputs[0], ort_outputs[0], rtol=1e-02)
+assert np.allclose(dace_outputs[1], ort_outputs[1], rtol=1e-02)
+assert np.allclose(pt_outputs[0].detach().numpy(), ort_outputs[0], rtol=1e-02)
+assert np.allclose(pt_outputs[1].detach().numpy(), ort_outputs[1], rtol=1e-02)
+
+print("Test passed.")
