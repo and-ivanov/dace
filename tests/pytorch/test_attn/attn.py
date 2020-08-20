@@ -9,6 +9,9 @@ import dace
 from dace.frontend.onnx import ONNXModel
 from dace.frontend.pytorch import DACEModule
 
+from dace.transformation.pattern_matching import match_pattern
+from dace.transformation.dataflow.gpu_transform import GPUTransformMap
+from dace.transformation.dataflow.map_fusion import MapFusion
 
 B = 2
 #H = 16
@@ -35,7 +38,24 @@ print(pt_outputs[0])
 my_dace_model = DACEModule(ptmodel)
 #my_dace_model = DACEModule(ptmodel, (Q, K, V))
 
-dace_outputs = my_dace_model(Q, K, V) 
+my_dace_model.initialize_sdfg((Q, K, V))
+
+my_dace_model.sdfg.expand_library_nodes()
+
+my_dace_model.sdfg.save('my_before.sdfg')
+
+for sdfg in my_dace_model.sdfg.sdfg_list:
+    if sdfg.label == 'softmaxExpansion':
+        matches = match_pattern(sdfg.states()[0], MapFusion, sdfg)
+        for m in matches:
+            print(m.print_match(sdfg.sdfg_list[m.sdfg_id]))
+            m.apply(sdfg)
+
+my_dace_model.sdfg.save('my_after.sdfg')
+
+
+dace_outputs = my_dace_model(Q, K, V)
+
 #dace_outputs = my_dace_model(Q.numpy(), K.numpy(), V.numpy()) 
 print(dace_outputs[0])
 
