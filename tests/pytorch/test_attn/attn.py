@@ -13,6 +13,9 @@ from dace.transformation.pattern_matching import match_pattern
 from dace.transformation.dataflow.gpu_transform import GPUTransformMap
 from dace.transformation.dataflow.map_fusion import MapFusion
 
+from dace.transformation.subgraph import SubgraphFusion
+import dace.transformation.subgraph.helpers as helpers
+
 B = 2
 #H = 16
 #P = 64
@@ -40,18 +43,34 @@ my_dace_model = DACEModule(ptmodel)
 
 my_dace_model.initialize_sdfg((Q, K, V))
 
+my_dace_model.sdfg.save('attn1.sdfg')
+
 my_dace_model.sdfg.expand_library_nodes()
 
-my_dace_model.sdfg.save('my_before.sdfg')
+my_dace_model.sdfg.save('attn2.sdfg')
 
+# fuse maps
 for sdfg in my_dace_model.sdfg.sdfg_list:
     if sdfg.label == 'softmaxExpansion':
-        matches = match_pattern(sdfg.states()[0], MapFusion, sdfg)
-        for m in matches:
-            print(m.print_match(sdfg.sdfg_list[m.sdfg_id]))
-            m.apply(sdfg)
+        sdfg_state = sdfg.states()[0]
 
-my_dace_model.sdfg.save('my_after.sdfg')
+        map_entries = helpers.get_highest_scope_maps(sdfg, sdfg_state)
+
+        map_fusion = SubgraphFusion()
+        map_fusion.fuse(sdfg, sdfg_state, map_entries)
+
+my_dace_model.sdfg.save('attn3.sdfg')
+
+# move single fused map to gpu
+for sdfg in my_dace_model.sdfg.sdfg_list:
+    if sdfg.label == 'softmaxExpansion':
+
+        matches = match_pattern(sdfg.states()[0], GPUTransformMap, sdfg)
+        for m in matches:
+            if 'GPUTransformMap in outer_fused[i=0:8, j=0:8]' == m.print_match(sdfg.sdfg_list[m.sdfg_id]):
+                m.apply(sdfg)
+
+my_dace_model.sdfg.save('attn4.sdfg')
 
 
 dace_outputs = my_dace_model(Q, K, V)
