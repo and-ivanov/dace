@@ -235,11 +235,14 @@ class CompiledSDFG(object):
                     print(
                         'WARNING: Casting scalar argument "%s" from %s to %s' %
                         (a, type(arg).__name__, atype.dtype.type))
-            #elif isinstance(
-            #        atype,
-            #        dt.Array) and atype.dtype.as_numpy_dtype() != arg.dtype:
-            #    print('WARNING: Passing %s array argument "%s" to a %s array' %
-            #          (arg.dtype, a, atype.dtype.type.__name__))
+            elif (isinstance(atype, dt.Array) and isinstance(arg, np.ndarray)
+                  and atype.dtype.as_numpy_dtype() != arg.dtype):
+                # Make exception for vector types
+                if (isinstance(atype.dtype, dtypes.vector)
+                        and atype.dtype.vtype.as_numpy_dtype() != arg.dtype):
+                    print(
+                        'WARNING: Passing %s array argument "%s" to a %s array'
+                        % (arg.dtype, a, atype.dtype.type.__name__))
 
         # Call a wrapper function to make NumPy arrays from pointers.
         for index, (arg, argtype) in enumerate(zip(arglist, argtypes)):
@@ -751,8 +754,9 @@ def _run_liveoutput(command, output_stream=None, **kwargs):
 
 def _array_interface_ptr(array: Any, array_type: dt.Array) -> int:
     """
-    If the given array implements ``__array_interface__`` (see ``dtypes.is_array``),
-    returns the base host or device pointer to the array's allocated memory.
+    If the given array implements ``__array_interface__`` (see
+    ``dtypes.is_array``), returns the base host or device pointer to the
+    array's allocated memory.
     :param array: Array object that implements NumPy's array interface.
     :param array_type: Data descriptor of the array (used to get storage
                        location to determine whether it's a host or GPU device
