@@ -72,6 +72,29 @@ for sdfg in my_dace_model.sdfg.sdfg_list:
 
 my_dace_model.sdfg.save('attn4.sdfg')
 
+#TODO: it is possible to explore another path of vectorization from here (along axis in outer node)
+# from dace.transformation.dataflow.tiling import MapTiling
+#
+# for sdfg in my_dace_model.sdfg.sdfg_list:
+#     if sdfg.label == 'softmaxExpansion':
+#         matches = match_pattern(sdfg.states()[0], MapTiling, sdfg)
+#         for m in matches:
+#             print(m.print_match(sdfg.sdfg_list[m.sdfg_id]))
+
+from dace.transformation.dataflow.vectorization import Vectorization
+
+for sdfg in my_dace_model.sdfg.sdfg_list:
+    if sdfg.label == 'softmaxExpansion':
+        matches = match_pattern(sdfg.states()[0], Vectorization, sdfg)
+        for m in matches:
+            if 'Vectorization in 3 -> 8 -> 4' == m.print_match(sdfg.sdfg_list[m.sdfg_id]):
+                m.vector_len = 4
+                m.apply(sdfg)
+            if 'Vectorization in 9 -> 11 -> 10' == m.print_match(sdfg.sdfg_list[m.sdfg_id]):
+                m.vector_len = 4
+                m.apply(sdfg)
+
+my_dace_model.sdfg.save('attn5.sdfg')
 
 dace_outputs = my_dace_model(Q, K, V)
 

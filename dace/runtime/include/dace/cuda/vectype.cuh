@@ -324,3 +324,13 @@ DEFINE_ALL_EXT_TYPES(float64,double);
     DEFINE_VECTYPE(float32, 3);
     DEFINE_VECTYPE(float32, 4);
     DEFINE_VECTYPE(float64, 2);
+
+
+DACE_HDFI exttype_float32_4 exp(const exttype_float32_4 &other) {
+    exttype_float32_4 result;
+    result.x = expf(other.x);
+    result.y = expf(other.y);
+    result.z = expf(other.z);
+    result.w = expf(other.w);
+    return result;
+}
