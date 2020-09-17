@@ -1,12 +1,13 @@
 """ Contains classes that implement the vectorization transformation. """
 from dace import data, dtypes, registry, symbolic, subsets
-from dace.sdfg import nodes, SDFG, propagation
+from dace.sdfg import nodes, SDFG, propagation, SDFGState
 from dace.sdfg import utils as sdutil
 from dace.sdfg.scope import ScopeSubgraphView
 from dace.transformation import pattern_matching
 from dace.transformation.helpers import replicate_scope
 from dace.properties import Property, make_properties
 import itertools
+import math
 
 
 @registry.autoregister_params(singlestate=True)
@@ -177,20 +178,49 @@ class Vectorization(pattern_matching.Transformation):
 
         # Vectorize connectors adjacent to the tasklet.
         for edge in graph.all_edges(tasklet):
+
+            # if edge is input to the tasklet, then 'connectors' contains all input connectors of tasklet
+            # if edge is output, then all output connectors
+            # actually connectors is a dict {connector: typeclass}
+            # by default type is not specified (typeclass.type=None), so it is assumed to be a scalar.
+            # Don't be surprized that it is printed as "void", None is interpreted as void sometimes this is why
+            # there is such print.
+            # The goal of transformation is to these types to vectors when possible.
             connectors = (tasklet.in_connectors
                           if edge.dst == tasklet else tasklet.out_connectors)
+
+            # this variable contains connector attached both to the edge and tasklet
+            # by the way, conn is contained inside connectors
             conn = edge.dst_conn if edge.dst == tasklet else edge.src_conn
 
             if edge.data.data is None:  # Empty memlets
                 continue
+
+            # edge.data.data contains string with array name that is used by the edge
+            # desc contains Array structure corresponding to the edge
             desc = sdfg.arrays[edge.data.data]
+
+            # desc.strides is a list of strides for each dim. For example, 3D array can have [nx * ny, nx, 1] strides.
+            # contigidx contains the index of dimension that has stride equal to 1. For the example above it is 2.
             contigidx = desc.strides.index(1)
 
+            # this is supposed to be a list of memlet ranges [(start, end, stride), (start, end, stride)]
+            # after the vectorization
             newlist = []
 
+            # edge.data.subset is a Range, which contains multidimensional list of 1D ranges
+            # for each dimension [(start, end, stride), (start, end, stride)] inside 'ranges' field.
+            # These tuples represent part of array that is supposed to be accessed by memlet.
+            # Range overloads __getitem__ method, so then you get contigidx,
+            # you actually get edge.data.subset.ranges[contigidx].
+            # For example, before vectorization, lastindex is supposed to be (i, i, 1).
             lastindex = edge.data.subset[contigidx]
+
             if isinstance(lastindex, tuple):
+                # here the previous range is just copied as is
                 newlist = [(rb, re, rs) for rb, re, rs in edge.data.subset]
+                # symbols is supposed to capture all symbols related to dimension which will be vectorized.
+                # in the canonical case when lastindex=(i, i, 1), symbols will contain only a single value 'i'.
                 symbols = set()
                 for indd in lastindex:
                     symbols.update(
@@ -199,27 +229,45 @@ class Vectorization(pattern_matching.Transformation):
                 newlist = [(rb, rb, 1) for rb in edge.data.subset]
                 symbols = symbolic.pystr_to_symbolic(lastindex).free_symbols
 
+            # this check skips cases where the dimension with the stride 1 is not the dimension over which vectorization
+            # is applied
             if str(param) not in map(str, symbols):
                 continue
 
             # Vectorize connector, if not already vectorized
             oldtype = connectors[conn]
+
             if oldtype is None or oldtype.type is None:
+                # the type of array is used as a type of vector
                 oldtype = desc.dtype
+
+            # if it is already vector type, then skip it since it is unclear how to vectorize vector
             if isinstance(oldtype, dtypes.vector):
                 continue
 
+            # make vector type out of scalar type and vector size and put it into connectors dict attached to tasklet
             connectors[conn] = dtypes.vector(oldtype, vector_size)
 
             # Modify memlet subset to match vector length
+            # newlist is changed here, it is not supposed to be just a blind copy of old Range
+            # there are to ways how to vectorize: change indices inside map or inside memlet
             if self.strided_map:
+                # change indices inside map
+
+                # remember that newlist[contigidx] contains something like (i, i, 1)
+                # rb is the first element of this tuple 'i'
                 rb = newlist[contigidx][0]
+
+                # I don't have any idea what it does, just assume that it is False
                 if self.propagate_parent:
                     newlist[contigidx] = (rb / self.vector_len,
                                           rb / self.vector_len, 1)
                 else:
+                    # apply change (i, i, 1) -> (i, i+3, 1) in case when vec_len = 4.
+                    # we have the same starting position i unchanged since map indices will go with step 4.
                     newlist[contigidx] = (rb, rb + self.vector_len - 1, 1)
             else:
+                # change indices inside memlet
                 rb = newlist[contigidx][0]
                 if self.propagate_parent:
                     newlist[contigidx] = (rb, rb, 1)
@@ -227,6 +275,8 @@ class Vectorization(pattern_matching.Transformation):
                     newlist[contigidx] = (self.vector_len * rb,
                                           self.vector_len * rb +
                                           self.vector_len - 1, 1)
+
+            # here we finally apply changes to memlet
             edge.data.subset = subsets.Range(newlist)
             edge.data.volume = vector_size
 
@@ -268,3 +318,4 @@ class Vectorization(pattern_matching.Transformation):
                         if e.src_conn == arrname
                     ])[0]
                     cursdfg = cursdfg.parent_sdfg
+

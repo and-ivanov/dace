@@ -96,6 +96,40 @@ for sdfg in my_dace_model.sdfg.sdfg_list:
 
 my_dace_model.sdfg.save('attn5.sdfg')
 
+for sdfg in my_dace_model.sdfg.sdfg_list:
+    if sdfg.label == 'softmaxExpansion':
+        matches = match_pattern(sdfg.states()[0], Vectorization, sdfg)
+        for m in matches:
+            if m.print_match(sdfg.sdfg_list[m.sdfg_id]) == 'Vectorization in 0 -> 2 -> 1':
+                m.apply(sdfg.sdfg_list[m.sdfg_id])
+
+my_dace_model.sdfg.save('attn6.sdfg')
+
+# # make map that supposed to be vectorized 1-dimensional
+# from dace.transformation.dataflow.tiling import MapTiling
+# for sdfg in my_dace_model.sdfg.sdfg_list:
+#     if sdfg.label == 'softmaxExpansion':
+#         matches = match_pattern(sdfg.states()[0], MapTiling, sdfg)
+#         for m in matches:
+#             if "MapTiling in reduce_values: ['_i0', '_i1', '_i2']" == m.print_match(sdfg.sdfg_list[m.sdfg_id]):
+#                 m.tile_sizes = (1,1,1)
+#                 m.apply(sdfg.sdfg_list[m.sdfg_id])
+#
+# my_dace_model.sdfg.save('attn7.sdfg')
+
+from dace.transformation.dataflow.wcr_extraction import WCRExtraction
+
+for sdfg in my_dace_model.sdfg.sdfg_list:
+    if sdfg.label == 'softmaxExpansion':
+        matches = match_pattern(sdfg.states()[0], WCRExtraction, sdfg)
+        for m in matches:
+            print(m.print_match(sdfg.sdfg_list[m.sdfg_id]))
+            m.apply(sdfg.sdfg_list[m.sdfg_id])
+
+my_dace_model.sdfg.save('attn7.sdfg')
+
+
+
 dace_outputs = my_dace_model(Q, K, V)
 
 #dace_outputs = my_dace_model(Q.numpy(), K.numpy(), V.numpy()) 
