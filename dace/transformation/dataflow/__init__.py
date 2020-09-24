@@ -1,3 +1,4 @@
+# Copyright 2019-2020 ETH Zurich and the DaCe authors. All rights reserved.
 """ This module initializes the dataflow transformations package. """
 
 # Map-related
@@ -8,6 +9,9 @@ from .map_for_loop import MapToForLoop
 from .map_interchange import MapInterchange
 from .map_fusion import MapFusion
 from .map_fission import MapFission
+from .trivial_map_elimination import TrivialMapElimination
+from .trivial_map_range_elimination import TrivialMapRangeElimination
+
 
 # Data movement
 from .strip_mining import StripMining
