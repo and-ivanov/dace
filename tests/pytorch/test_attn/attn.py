@@ -12,6 +12,7 @@ from dace.frontend.pytorch import DACEModule
 from dace.transformation.pattern_matching import match_pattern
 from dace.transformation.dataflow.gpu_transform import GPUTransformMap
 from dace.transformation.dataflow.map_fusion import MapFusion
+from dace.sdfg.graph import SubgraphView
 
 from dace.transformation.subgraph import SubgraphFusion
 import dace.transformation.subgraph.helpers as helpers
@@ -53,11 +54,7 @@ my_dace_model.sdfg.save('attn2.sdfg')
 for sdfg in my_dace_model.sdfg.sdfg_list:
     if sdfg.label == 'softmaxExpansion':
         sdfg_state = sdfg.states()[0]
-
-        map_entries = helpers.get_highest_scope_maps(sdfg, sdfg_state)
-
-        map_fusion = SubgraphFusion()
-        map_fusion.fuse(sdfg, sdfg_state, map_entries)
+        SubgraphFusion(sdfg_state).apply(sdfg)
 
 my_dace_model.sdfg.save('attn3.sdfg')
 
@@ -105,30 +102,58 @@ for sdfg in my_dace_model.sdfg.sdfg_list:
 
 my_dace_model.sdfg.save('attn6.sdfg')
 
-# # make map that supposed to be vectorized 1-dimensional
-# from dace.transformation.dataflow.tiling import MapTiling
-# for sdfg in my_dace_model.sdfg.sdfg_list:
-#     if sdfg.label == 'softmaxExpansion':
-#         matches = match_pattern(sdfg.states()[0], MapTiling, sdfg)
-#         for m in matches:
-#             if "MapTiling in reduce_values: ['_i0', '_i1', '_i2']" == m.print_match(sdfg.sdfg_list[m.sdfg_id]):
-#                 m.tile_sizes = (1,1,1)
-#                 m.apply(sdfg.sdfg_list[m.sdfg_id])
-#
-# my_dace_model.sdfg.save('attn7.sdfg')
+from dace.transformation.dataflow.trivial_map_elimination import TrivialMapElimination
+from dace.transformation.dataflow.trivial_map_range_elimination import TrivialMapRangeElimination
 
-from dace.transformation.dataflow.wcr_extraction import WCRExtraction
+for sdfg in my_dace_model.sdfg.sdfg_list:
+    for transform in [TrivialMapElimination, TrivialMapRangeElimination]:
+        matches = match_pattern(sdfg.states()[0], transform, sdfg)
+        for m in matches:
+            m.apply(sdfg.sdfg_list[m.sdfg_id])
+
+my_dace_model.sdfg.save('attn6_1.sdfg')
+
+from dace.transformation.dataflow.tiling import MapTiling
 
 for sdfg in my_dace_model.sdfg.sdfg_list:
     if sdfg.label == 'softmaxExpansion':
-        matches = match_pattern(sdfg.states()[0], WCRExtraction, sdfg)
+        matches = match_pattern(sdfg.states()[0], MapTiling, sdfg)
+        for m in matches:
+            if "MapTiling in reduce_values: ['_i2']" == m.print_match(sdfg.sdfg_list[m.sdfg_id]):
+                m.tile_sizes = (4,)
+                m.apply(sdfg.sdfg_list[m.sdfg_id])
+
+my_dace_model.sdfg.save('attn6_2.sdfg')
+
+# TODO:
+# 1. introduce accessnode (of size 1) between map exits (basically this transformation is an adaptation of WCRExtraction)
+# 2. apply WCRExtraction + Vectorization to the inner map
+# 3. design new transformation WarpAllReduceDetection that finds patterns AccessNode->WCR->MapExit(trheads)->WCR->AccessNode
+# and replaces it by AccessNode->WarpReduceTasklet->MapExit(threads)->AccessNode
+
+from dace.transformation.dataflow.stream_transient import AccumulateTransient
+
+for sdfg in my_dace_model.sdfg.sdfg_list:
+    if sdfg.label == 'softmaxExpansion':
+        matches = match_pattern(sdfg.states()[0], AccumulateTransient, sdfg)
         for m in matches:
             print(m.print_match(sdfg.sdfg_list[m.sdfg_id]))
-            m.apply(sdfg.sdfg_list[m.sdfg_id])
+            if "AccumulateTransient in 2 -> 1 -> 6" == m.print_match(sdfg.sdfg_list[m.sdfg_id]):
+                m.apply(sdfg.sdfg_list[m.sdfg_id])
 
 my_dace_model.sdfg.save('attn7.sdfg')
 
+# from dace.transformation.dataflow.wcr_extraction import WCRExtraction
+#
+# for sdfg in my_dace_model.sdfg.sdfg_list:
+#     if sdfg.label == 'softmaxExpansion':
+#         matches = match_pattern(sdfg.states()[0], WCRExtraction, sdfg)
+#         for m in matches:
+#             print(m.print_match(sdfg.sdfg_list[m.sdfg_id]))
+#             m.apply(sdfg.sdfg_list[m.sdfg_id])
 
+
+my_dace_model.sdfg.save('attn8.sdfg')
 
 dace_outputs = my_dace_model(Q, K, V)
 
