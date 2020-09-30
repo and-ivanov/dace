@@ -3,14 +3,15 @@
     and transient nodes. """
 
 import copy
+from dace.symbolic import symstr
 import warnings
 from dace import data, dtypes, registry, symbolic, subsets
 from dace.frontend.operations import detect_reduction_type
-from dace.properties import make_properties, Property
+from dace.properties import SymbolicProperty, make_properties, Property
 from dace.sdfg import nodes
 from dace.sdfg import SDFG
 from dace.sdfg import utils as sdutil
-from dace.transformation import pattern_matching
+from dace.transformation import transformation
 
 
 def calc_set_image_index(map_idx, map_set, array_idx):
@@ -47,7 +48,7 @@ def calc_set_image(map_idx, map_set, array_set):
 
 @registry.autoregister_params(singlestate=True)
 @make_properties
-class StreamTransient(pattern_matching.Transformation):
+class StreamTransient(transformation.Transformation):
     """ Implements the StreamTransient transformation, which adds a transient
         and stream nodes between nested maps that lead to a stream. The
         transient then acts as a local buffer.
@@ -149,13 +150,10 @@ class StreamTransient(pattern_matching.Transformation):
 
         return
 
-    def modifies_graph(self):
-        return True
-
 
 @registry.autoregister_params(singlestate=True)
 @make_properties
-class AccumulateTransient(pattern_matching.Transformation):
+class AccumulateTransient(transformation.Transformation):
     """ Implements the AccumulateTransient transformation, which adds
         transient stream and data nodes between nested maps that lead to a 
         stream. The transient data nodes then act as a local accumulator.
@@ -170,6 +168,10 @@ class AccumulateTransient(pattern_matching.Transformation):
         desc="Array to create local storage for (if empty, first available)",
         default=None,
         allow_none=True)
+
+    identity = SymbolicProperty(desc="Identity value to set",
+                                default=None,
+                                allow_none=True)
 
     @staticmethod
     def expressions():
@@ -200,15 +202,15 @@ class AccumulateTransient(pattern_matching.Transformation):
         return ' -> '.join(
             str(node) for node in [tasklet, map_exit, outer_map_exit])
 
-    def apply(self, sdfg):
+    def apply(self, sdfg: SDFG):
         graph = sdfg.node(self.state_id)
+        map_exit = graph.node(self.subgraph[AccumulateTransient._map_exit])
+        outer_map_exit = graph.node(
+            self.subgraph[AccumulateTransient._outer_map_exit])
 
         # Choose array
         array = self.array
         if array is None or len(array) == 0:
-            map_exit = graph.node(self.subgraph[AccumulateTransient._map_exit])
-            outer_map_exit = graph.node(
-                self.subgraph[AccumulateTransient._outer_map_exit])
             array = next(e.data.data
                          for e in graph.edges_between(map_exit, outer_map_exit)
                          if e.data.wcr is not None)
@@ -216,24 +218,39 @@ class AccumulateTransient(pattern_matching.Transformation):
         # Avoid import loop
         from dace.transformation.dataflow.local_storage import LocalStorage
 
-        local_storage_subgraph = {
-            LocalStorage._node_a:
-            self.subgraph[AccumulateTransient._map_exit],
-            LocalStorage._node_b:
-            self.subgraph[AccumulateTransient._outer_map_exit]
-        }
-        sdfg_id = sdfg.sdfg_id
-        in_local_storage = LocalStorage(sdfg_id, self.state_id,
-                                        local_storage_subgraph,
-                                        self.expr_index)
-        in_local_storage.array = array
-        in_local_storage.apply(sdfg)
+        data_node: nodes.AccessNode = LocalStorage.apply_to(
+            sdfg, dict(array=array), node_a=map_exit, node_b=outer_map_exit)
 
-        # Initialize transient to zero in case of summation
-        # TODO: Initialize transient in other WCR types
-        memlet = graph.in_edges(in_local_storage._data_node)[0].data
+        # Initialize transient to zero in case of summation, or with an identity
+        # map/tasklet in other cases
+        memlet = graph.in_edges(data_node)[0].data
         if detect_reduction_type(memlet.wcr) == dtypes.ReductionType.Sum:
-            in_local_storage._data_node.setzero = True
+            data_node.setzero = True
         else:
-            warnings.warn('AccumulateTransient did not properly initialize'
-                          'newly-created transient!')
+            if self.identity is None:
+                warnings.warn('AccumulateTransient did not properly initialize'
+                              'newly-created transient!')
+                return
+
+            init_state = sdfg.add_state_before(graph)
+            desc = sdfg.arrays[array]
+            if desc.total_size == 1:
+                # Add initialization as a tasklet
+                t = init_state.add_tasklet('acctrans_init', {}, {'out'},
+                                           'out = %s' % self.identity)
+                w = init_state.add_write(array)
+                init_state.add_edge(t, 'out', w, None, dace.Memlet(array))
+            else:
+                # Add initialization as a map
+                init_state.add_mapped_tasklet(
+                    'acctrans_init', {
+                        '_o%d' % i: '0:%s' % symstr(d)
+                        for i, d in enumerate(desc.shape)
+                    }, {},
+                    'out = %s' % self.identity, {
+                        'out':
+                        dace.Memlet.simple(
+                            '_out', ','.join(
+                                ['_o%d' % i for i in range(desc.shape)]))
+                    },
+                    external_edges=True)

@@ -4,7 +4,7 @@ from dace import data, dtypes, registry, symbolic, subsets
 from dace.sdfg import nodes, SDFG, propagation, SDFGState
 from dace.sdfg import utils as sdutil
 from dace.sdfg.scope import ScopeSubgraphView
-from dace.transformation import pattern_matching
+from dace.transformation import transformation
 from dace.transformation.helpers import replicate_scope
 from dace.properties import Property, make_properties
 import itertools
@@ -13,7 +13,7 @@ import math
 
 @registry.autoregister_params(singlestate=True)
 @make_properties
-class Vectorization(pattern_matching.Transformation):
+class Vectorization(transformation.Transformation):
     """ Implements the vectorization transformation.
 
         Vectorization matches when all the input and output memlets of a 
