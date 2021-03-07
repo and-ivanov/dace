@@ -386,10 +386,10 @@ def ndcopy_to_strided_copy(
     # and shapes to the copy. The second condition is there because sometimes
     # the symbolic math engine fails to produce the same expressions for both
     # arrays.
-    if (tuple(src_strides) == tuple(dst_strides) and (
-        (src_copylen == copy_length and dst_copylen == copy_length)
-            or (tuple(src_shape) == tuple(copy_shape)
-                and tuple(dst_shape) == tuple(copy_shape)))):
+    if (tuple(src_strides) == tuple(dst_strides)
+            and ((src_copylen == copy_length and dst_copylen == copy_length) or
+                 (tuple(src_shape) == tuple(copy_shape)
+                  and tuple(dst_shape) == tuple(copy_shape)))):
         # Emit 1D copy of the whole array
         copy_shape = [functools.reduce(lambda x, y: x * y, copy_shape)]
         return copy_shape, [1], [1]
@@ -711,6 +711,14 @@ def unparse_tasklet(sdfg, state_id, dfg, node, function_stream, callsite_stream,
                 'int __dace_current_stream_id = %d;\n%sStream_t __dace_current_stream = __state->gpu_context->streams[__dace_current_stream_id];'
                 %
                 (node._cuda_stream, Config.get('compiler', 'cuda', 'backend')),
+                sdfg,
+                state_id,
+                node,
+            )
+        else:
+            callsite_stream.write(
+                '%sStream_t __dace_current_stream = nullptr;' %
+                Config.get('compiler', 'cuda', 'backend'),
                 sdfg,
                 state_id,
                 node,
