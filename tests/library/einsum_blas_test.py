@@ -40,26 +40,6 @@ def test_gemm_fails_storage_mkl():
         assert "cannot access" in str(info.value)
 
 
-@pytest.mark.gpu
-def test_gemm_fails_storage_cuda():
-
-    with change_default(blas, "cuBLAS"):
-        with pytest.raises(ValueError) as info:
-
-            @dace.program
-            def test_failing_cublas(A: dace.float32[10, 5],
-                                    B: dace.float32[5, 3], C: dace.float32[10,
-                                                                           3]):
-                C[:] = A @ B
-
-            sdfg = test_failing_cublas.to_sdfg()
-            A = np.random.rand(10, 5).astype(np.float32)
-            B = np.random.rand(5, 3).astype(np.float32)
-            C = np.zeros((10, 3)).astype(np.float32)
-            sdfg(A=A, B=B, C=C)
-        assert "cannot access" in str(info.value)
-
-
 @pytest.mark.parametrize("impl", ["cuBLAS", "MKL"])
 def test_simple(impl):
     A_desc = dace.float32[10, 5]
