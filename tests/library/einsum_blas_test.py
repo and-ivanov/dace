@@ -58,3 +58,84 @@ def test_gemm_fails_storage_cuda():
             C = np.zeros((10, 3)).astype(np.float32)
             sdfg(A=A, B=B, C=C)
         assert "cannot access" in str(info.value)
+
+
+@pytest.mark.parametrize("impl", ["cuBLAS", "MKL"])
+def test_simple(impl):
+    A_desc = dace.float32[10, 5]
+    B_desc = dace.float32[5, 3]
+    C_desc = dace.float32[10, 3]
+    with change_default(blas, impl):
+
+        @dace.program
+        def test_simple_einsum(A: A_desc, B: B_desc, C: C_desc):
+            C[:] = np.einsum("ik,kj->ij", A, B)
+
+        A = np.random.rand(*A_desc.shape).astype(np.float32)
+        B = np.random.rand(*B_desc.shape).astype(np.float32)
+        C = np.zeros(C_desc.shape).astype(np.float32)
+
+        sdfg: dace.SDFG = test_simple_einsum.to_sdfg()
+        sdfg.name = impl + "_einsum_simple"
+        if impl == "cuBLAS":
+            sdfg.apply_gpu_transformations()
+        sdfg.expand_library_nodes()
+
+        assert_used_environment(sdfg, impl)
+
+        sdfg(A=A, B=B, C=C)
+        assert np.allclose(A @ B, C)
+
+
+@pytest.mark.parametrize("impl", ["cuBLAS", "MKL"])
+def test_3x2(impl):
+    A_desc = dace.float32[8, 10, 12]
+    B_desc = dace.float32[12, 5]
+    C_desc = dace.float32[8, 10, 5]
+    with change_default(blas, impl):
+
+        @dace.program
+        def test_3x2(A: A_desc, B: B_desc, C: C_desc):
+            C[:] = np.einsum("aik,kj->aij", A, B)
+
+        A = np.random.rand(*A_desc.shape).astype(np.float32)
+        B = np.random.rand(*B_desc.shape).astype(np.float32)
+        C = np.zeros(C_desc.shape).astype(np.float32)
+
+        sdfg: dace.SDFG = test_3x2.to_sdfg()
+        sdfg.name = impl + "_einsum_simple"
+        if impl == "cuBLAS":
+            sdfg.apply_gpu_transformations()
+        sdfg.expand_library_nodes()
+
+        assert_used_environment(sdfg, impl)
+
+        sdfg(A=A, B=B, C=C)
+        assert np.allclose(A @ B, C)
+
+
+@pytest.mark.parametrize("impl", ["cuBLAS", "MKL"])
+def test_4x4(impl):
+    A_desc = dace.float32[8, 12, 5, 3]
+    B_desc = dace.float32[8, 12, 3, 6]
+    C_desc = dace.float32[8, 12, 5, 6]
+    with change_default(blas, impl):
+
+        @dace.program
+        def test_4x4(A: A_desc, B: B_desc, C: C_desc):
+            C[:] = np.einsum("abik,abkj->abij", A, B)
+
+        A = np.random.rand(*A_desc.shape).astype(np.float32)
+        B = np.random.rand(*B_desc.shape).astype(np.float32)
+        C = np.zeros(C_desc.shape).astype(np.float32)
+
+        sdfg: dace.SDFG = test_4x4.to_sdfg()
+        sdfg.name = impl + "_einsum_simple"
+        if impl == "cuBLAS":
+            sdfg.apply_gpu_transformations()
+        sdfg.expand_library_nodes()
+
+        assert_used_environment(sdfg, impl)
+
+        sdfg(A=A, B=B, C=C)
+        assert np.allclose(A @ B, C)
