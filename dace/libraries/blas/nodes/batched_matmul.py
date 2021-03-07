@@ -251,7 +251,7 @@ class ExpandBatchedMatMulCuBLAS(ExpandTransformation):
 
             for name, desc in [('_a', adesc), ('_b', bdesc), ('_c', cdesc)]:
                 if isinstance(desc, dt.View):
-                    desc.as_array()
+                    dcopy = desc.as_array()
                 else:
                     dcopy = dc(desc)
                 dcopy.transient = False
