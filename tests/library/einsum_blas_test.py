@@ -10,6 +10,22 @@ import dace
 from dace.library import change_default
 from dace.libraries import blas
 
+MKL_AND_CUBLAS = [
+    pytest.param("cuBLAS", marks=pytest.mark.gpu),
+    pytest.param("MKL", marks=pytest.mark.mkl)
+]
+
+
+def test_change_default():
+    old_default = blas.default_implementation
+
+    blas.default_implementation = "hello"
+
+    with change_default(blas, "MKL"):
+        assert blas.default_implementation == "MKL"
+    assert blas.default_implementation == "hello"
+    blas.default_implementation = old_default
+
 
 def assert_used_environment(sdfg, impl):
     implementation_to_env = {"MKL": "IntelMKL", "cuBLAS": "cuBLAS"}
@@ -40,7 +56,7 @@ def test_gemm_fails_storage_mkl():
         assert "cannot access" in str(info.value)
 
 
-@pytest.mark.parametrize("impl", ["cuBLAS", "MKL"])
+@pytest.mark.parametrize("impl", MKL_AND_CUBLAS)
 def test_simple(impl):
     A_desc = dace.float32[10, 5]
     B_desc = dace.float32[5, 3]
@@ -67,7 +83,7 @@ def test_simple(impl):
         assert np.allclose(A @ B, C)
 
 
-@pytest.mark.parametrize("impl", ["cuBLAS", "MKL"])
+@pytest.mark.parametrize("impl", MKL_AND_CUBLAS)
 def test_3x2(impl):
     A_desc = dace.float32[8, 10, 12]
     B_desc = dace.float32[12, 5]
@@ -94,7 +110,7 @@ def test_3x2(impl):
         assert np.allclose(A @ B, C)
 
 
-@pytest.mark.parametrize("impl", ["cuBLAS", "MKL"])
+@pytest.mark.parametrize("impl", MKL_AND_CUBLAS)
 def test_4x4(impl):
     A_desc = dace.float32[8, 12, 5, 3]
     B_desc = dace.float32[8, 12, 3, 6]
