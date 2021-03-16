@@ -107,19 +107,6 @@ class NestedSDFGFusion(transformation.Transformation):
 
         return True
 
-    @staticmethod
-    def match_to_str(sdfg_state: dace_state.SDFGState,
-                     candidate: Dict[dace_nodes.Node, int]):
-
-        nested_sdfg1 = sdfg_state.nodes()[candidate[
-            NestedSDFGFusion._nested_sdfg1]]
-        access_node = sdfg_state.nodes()[candidate[
-            NestedSDFGFusion._access_node]]
-        nested_sdfg2 = sdfg_state.nodes()[candidate[
-            NestedSDFGFusion._nested_sdfg2]]
-
-        return nested_sdfg1 + '->' + access_node + '->' + nested_sdfg2
-
     def apply(self, sdfg: dace_sdfg.SDFG):
         sdfg_state = sdfg.nodes()[self.state_id]
 

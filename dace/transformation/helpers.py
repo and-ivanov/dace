@@ -7,7 +7,7 @@ from networkx import MultiDiGraph
 from dace.subsets import Range, Subset, union
 import dace.subsets as subsets
 from typing import Dict, List, Optional, Tuple, Set
-
+import dace
 from dace import symbolic
 from dace.sdfg import nodes, utils
 from dace.sdfg.graph import SubgraphView, MultiConnectorEdge
@@ -122,7 +122,11 @@ def nest_state_subgraph(sdfg: SDFG,
     # Input/output data that are not source/sink nodes are added to the graph
     # as non-transients
     for name in (input_arrays | output_arrays.keys()):
-        datadesc = copy.deepcopy(sdfg.arrays[name])
+        array = sdfg.arrays[name]
+        if isinstance(array, dace.data.View):
+            datadesc = dace.data.Array(array.dtype, array.shape)
+        else:
+            datadesc = copy.deepcopy(array)
         datadesc.transient = False
         nsdfg.add_datadesc(name, datadesc)
 
@@ -136,7 +140,11 @@ def nest_state_subgraph(sdfg: SDFG,
             continue
         name = edge.data.data
         if name not in global_subsets:
-            datadesc = copy.deepcopy(sdfg.arrays[edge.data.data])
+            array = sdfg.arrays[name]
+            if isinstance(array, dace.data.View):
+                datadesc = dace.data.Array(array.dtype, array.shape)
+            else:
+                datadesc = copy.deepcopy(array)
             datadesc.transient = False
             if not full_data:
                 datadesc.shape = edge.data.subset.size()
@@ -156,7 +164,11 @@ def nest_state_subgraph(sdfg: SDFG,
             continue
         name = edge.data.data
         if name not in global_subsets:
-            datadesc = copy.deepcopy(sdfg.arrays[edge.data.data])
+            array = sdfg.arrays[name]
+            if isinstance(array, dace.data.View):
+                datadesc = dace.data.Array(array.dtype, array.shape)
+            else:
+                datadesc = copy.deepcopy(array)
             datadesc.transient = False
             if not full_data:
                 datadesc.shape = edge.data.subset.size()
