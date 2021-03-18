@@ -17,6 +17,7 @@ from dace.sdfg.graph import SubgraphView
 from dace.sdfg.replace import replace_properties
 from dace import dtypes
 from dace import data as dace_data
+from dace.subsets import Range
 import itertools
 
 
@@ -350,7 +351,46 @@ class UnifyInOutNestedSDFGConnectors(transformation.Transformation):
             state.add_edge(out_edge.src, in_conn, out_edge.dst, out_edge.dst_conn, out_edge.data)
             state.remove_edge(out_edge)
 
-            merge_symbols(nested_sdfg.sdfg, in_conn, out_conn)
+            in_array: dace_data.Array = nested_sdfg.sdfg.arrays[in_conn]
+            out_array: dace_data.Array = nested_sdfg.sdfg.arrays[out_conn]
+
+            if in_array.shape != out_array.shape:
+                view_name = out_conn + '_view'
+                nested_sdfg.sdfg.add_view(view_name, out_array.shape, out_array.dtype)
+
+            for s in nested_sdfg.sdfg.nodes():
+                s: dace_state.SDFGState
+                for n in s.nodes():
+                    if isinstance(n, nodes.AccessNode) and n.data == out_conn:
+                        n: nodes.AccessNode
+                        # before merging symbols we need to make sure that corresponding arrays
+                        # have the same dimensions, otherwise we create view node for each array corresponding to out connector
+                        if in_array.shape != out_array.shape:
+                            if n.has_writes(s):
+                                view = s.add_access(view_name)
+                                access_in_edges = list(s.in_edges(n))
+                                for e in access_in_edges:
+                                    s.add_edge(e.src, e.src_conn, view, None, memlet.Memlet(data=view_name, subset=e.data.subset))
+                                    s.remove_edge(e)
+                                s.add_nedge(view, n, memlet.Memlet(data=in_conn, subset=Range.from_array(in_array)))
+                        else:
+                            for e in s.in_edges(n):
+                                if e.data.data == out_conn:
+                                    e.data.data = in_conn
+                        n.data = in_conn
+
+            # remove out array
+            del nested_sdfg.sdfg.arrays[out_conn]
+
+            # rename out connector
+            nested_sdfg.remove_out_connector(out_conn)
+            nested_sdfg.add_out_connector(in_conn)
+
+            # change external memlet connectors
+            for edge in state.out_edges(nested_sdfg):
+                if edge.src_conn == out_conn:
+                    edge.src_conn = in_conn
+
 
 
 @registry.autoregister_params(singlestate=True)
