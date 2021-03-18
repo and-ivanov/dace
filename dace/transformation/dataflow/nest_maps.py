@@ -15,6 +15,7 @@ from dace import memlet
 from dace.sdfg import graph as dace_graph
 from dace.transformation.helpers import nest_state_subgraph
 from dace.sdfg.graph import SubgraphView
+from dace.data import View
 
 
 @registry.autoregister_params(singlestate=True)

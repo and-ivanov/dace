@@ -602,3 +602,46 @@ class RemoveDanglingAccessNodes(transformation.Transformation):
         access_node: dace_nodes.AccessNode = state.nodes()[candidate[RemoveDanglingAccessNodes.access_node]]
 
         state.remove_node(access_node)
+
+
+@registry.autoregister_params(singlestate=True)
+class RemoveNSDFGInputView(transformation.Transformation):
+    view = transformation.PatternNode(nodes.AccessNode)
+    nsdfg = transformation.PatternNode(nodes.NestedSDFG)
+
+    @staticmethod
+    def expressions():
+        return [
+            sdutil.node_path_graph(
+                RemoveNSDFGInputView.view,
+                RemoveNSDFGInputView.nsdfg,
+            )
+        ]
+
+    @staticmethod
+    def can_be_applied(state: dace_state.SDFGState, candidate, expr_index, sdfg, strict=False):
+        view: nodes.AccessNode = state.nodes()[candidate[RemoveNSDFGInputView.view]]
+        nsdfg: nodes.NestedSDFG = state.nodes()[candidate[RemoveNSDFGInputView.nsdfg]]
+
+        if not isinstance(sdfg.arrays[view.data], dace_data.View):
+            return False
+
+        if state.out_degree(view) != 1:
+            return False # multiple reads are unsupported
+
+        return True
+
+    def apply(self, sdfg: dace_sdfg.SDFG):
+
+        state: dace_state.SDFGState = sdfg.nodes()[self.state_id]
+        candidate = self.subgraph
+        view: dace_nodes.AccessNode = state.nodes()[candidate[RemoveNSDFGInputView.view]]
+        nsdfg: dace_nodes.NestedSDFG = state.nodes()[candidate[RemoveNSDFGInputView.nsdfg]]
+
+        in_edge = state.edges_between(view, nsdfg)[0]
+
+        for e in state.in_edges(view):
+            state.add_edge(e.src, e.src_conn, in_edge.dst, in_edge.dst_conn, e.data)
+
+        state.remove_node(view)
+
