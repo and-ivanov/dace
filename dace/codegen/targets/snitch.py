@@ -766,7 +766,7 @@ class SnitchCodeGen(TargetCodeGenerator):
         if ssr_region:
             for ssr_id, ssr in enumerate([x for x in self.ssrs if x]):
                 if ssr["map"].schedule == dtypes.ScheduleType.Snitch_Multicore:
-                    callsite_stream.write('__builtin_ssr_enable();')
+                    callsite_stream.write('__builtin_ssr_disable();')
                     break
 
         for param, rng in zip(entry_node.map.params, entry_node.map.range):
@@ -1107,13 +1107,12 @@ class SnitchCodeGen(TargetCodeGenerator):
             ccode = re.sub(r"(?<!struct )({})".format(state_struct), r"struct {}".format(state_struct), ccode)
 
         # replace stuff
-        replace = [
-            ('DACE_EXPORTED', 'DACE_C_EXPORTED'),
-            ('nullptr', 'NULL'),
-            ('constexpr', 'static const'),
-            ('inline ', 'static inline ')  # change to static scope
-        ]
-        for (i, o) in replace:
-            ccode = ccode.replace(i, o)
+        replace = [ #('DACE_EXPORTED','DACE_C_EXPORTED'),
+                    ('nullptr','NULL'),
+                    ('constexpr','static const'),
+                    ('inline ','static inline ') # change to static scope
+                    ]
+        for (i,o) in replace:
+            ccode = ccode.replace(i,o)
 
         return (ccode, hdrs)

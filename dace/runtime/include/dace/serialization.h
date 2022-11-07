@@ -2,6 +2,8 @@
 #ifndef __DACE_SERIALIZATION_H
 #define __DACE_SERIALIZATION_H
 
+#ifndef __SNITCH__
+
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -202,5 +204,7 @@ public:
 };
 
 }  // namespace dace
+
+#endif  // #ifndef __SNITCH__
 
 #endif  // __DACE_SERIALIZATION_H

@@ -315,7 +315,7 @@ template<typename T>
 static DACE_CONSTEXPR DACE_HDFI std::complex<T> log2(const std::complex<T>& n) {
     T radius = std::abs(n);
     T theta = std::arg(n);
-    return std::complex<T>(std::log2(radius), theta / std::log(T(2)));
+    return std::complex<T>(std::log(radius) / std::log(T(2)), theta / std::log(T(2)));
 }
 
 // Computes the e raised to the given power n, minus 1.0 (support for complex numbers)

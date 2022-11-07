@@ -2,6 +2,8 @@
 #ifndef __DACE_STREAM_H
 #define __DACE_STREAM_H
 
+#ifndef __SNITCH__
+
 #include "../../../external/moodycamel/blockingconcurrentqueue.h"
 
 // Consume
@@ -426,5 +428,6 @@ namespace dace {
     };
 
 }  // namespace dace
+#endif  // #ifndef __SNITCH__
 
 #endif  // __DACE_STREAM_H

@@ -2,6 +2,8 @@
 #ifndef __DACE_PERF_REPORTING_H
 #define __DACE_PERF_REPORTING_H
 
+#ifndef __SNITCH__
+
 #include <chrono>
 #include <cstring>
 #include <fstream>
@@ -243,4 +245,7 @@ namespace perf {
 #undef DACE_REPORT_EVENT_NAME_LEN
 #undef DACE_REPORT_EVENT_CAT_LEN
 
+#endif  // #ifndef __SNITCH__
+
 #endif  // __DACE_PERF_REPORTING_H
+
