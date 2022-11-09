@@ -1092,7 +1092,7 @@ class SnitchCodeGen(TargetCodeGenerator):
         code._code = code._code.replace('dace::math::pow', 'pow')
 
         # change new/delete to malloc/free
-        code._code = re.sub(r"new (.+) \[(\d*)\];", r"(\1*)malloc(\2*sizeof(\1));", code._code)
+        code._code = re.sub(r"new ([^ ]+) [^[]*\[(\d*)\];", r"(\1*)calloc(\2, sizeof(\1));", code._code)
         code._code = re.sub(r"new ([a-zA-Z0-9 _]*);", r"(\1*)malloc(sizeof(\1));", code._code)
         code._code = re.sub(r"delete (.*);", r"free(\1);", code._code)
         code._code = re.sub(r"delete\[\] (.*);", r"free(\1);", code._code)
