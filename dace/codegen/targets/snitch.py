@@ -1071,7 +1071,7 @@ class SnitchCodeGen(TargetCodeGenerator):
 
         # Generate headers
         hdrs = ""
-        init_params = (sdfg.name, sdfg.name, sdfg.signature(with_types=True, for_call=False, with_arrays=False))
+        init_params = (sdfg.name, sdfg.name, sdfg.init_signature())
         call_params = sdfg.signature(with_types=True, for_call=False)
         if len(call_params) > 0:
             call_params = ', ' + call_params
@@ -1096,6 +1096,10 @@ class SnitchCodeGen(TargetCodeGenerator):
         code._code = re.sub(r"new ([a-zA-Z0-9 _]*);", r"(\1*)malloc(sizeof(\1));", code._code)
         code._code = re.sub(r"delete (.*);", r"free(\1);", code._code)
         code._code = re.sub(r"delete\[\] (.*);", r"free(\1);", code._code)
+
+        # fix simulation until fsqrt.d support is added in banshee 
+        # it is not exactly 0.5 to prevent compiler optimizations
+        code._code = re.sub(r"sqrt\s*\((.*)\)", r"pow(\1, 0.50001)", code._code)
 
         # prepend all uses of the state struct with `struct`
         ccode = code.clean_code
