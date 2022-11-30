@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 from textwrap import dedent
 import os
+from dace.codegen.targets.snitch import SnitchCodeGen
 
 
 N = dace.symbol('N')
@@ -36,6 +37,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-N", type=int, default=1024)
     parser.add_argument("--simulator", type=str, default='banshee')
+    parser.add_argument("--toolchain", type=str, default='llvm')
     args = parser.parse_args()
 
     # Initialize arrays
@@ -49,15 +51,13 @@ if __name__ == "__main__":
     # Call the program (the value of N is inferred by dace automatically)
     sdfg = axpy.to_sdfg()
     
-    # TODO:
     # Load elements of X and Y with SSR streamers
-    # find_access_node_by_name(sdfg, 'X')[0].desc(sdfg).storage = dace.dtypes.StorageType.Snitch_SSR
-    # find_access_node_by_name(sdfg, 'Y')[0].desc(sdfg).storage = dace.dtypes.StorageType.Snitch_SSR
+    find_access_node_by_name(sdfg, 'X')[0].desc(sdfg).storage = dace.dtypes.StorageType.Snitch_SSR
+    find_access_node_by_name(sdfg, 'Y')[0].desc(sdfg).storage = dace.dtypes.StorageType.Snitch_SSR
 
     # Execute parallel
-    #find_map_by_name(sdfg, 'multiplication')[0].schedule = dace.ScheduleType.Snitch_Multicore
+    find_map_by_name(sdfg, 'multiplication')[0].schedule = dace.ScheduleType.Snitch_Multicore
     
-    from dace.codegen.targets.snitch import SnitchCodeGen
     code, header = SnitchCodeGen.gen_code_snitch(sdfg)
     
     N = args.N
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     if not Path(snitch_root).is_dir():
         raise RuntimeError(f"SNITCH_ROOT is not found at {snitch_root}")
     
-    fallback_snitch_toolchain = dace_root / '../cmake/my-toolchain-llvm.cmake'
+    fallback_snitch_toolchain = dace_root / f'../cmake/my-toolchain-{args.toolchain}-{args.simulator}.cmake'
     snitch_toolchain = os.environ.get('SNITCH_CMAKE_TOOLCHAIN', fallback_snitch_toolchain)
     if not Path(snitch_toolchain).is_file():
         raise RuntimeError(f"SNITCH_CMAKE_TOOLCHAIN is not found at {snitch_toolchain}")
@@ -95,7 +95,8 @@ if __name__ == "__main__":
         #include "snrt.h"
         #include "omp.h"
         #include "dm.h"
-        #include "printf.h"
+        #include <cstdio>
+        #include <cmath>
         
         double X[{N}] = {{ {', '.join([str(v) for v in x])} }};
         double Y[{N}] = {{ {', '.join([str(v) for v in y])} }};
@@ -106,13 +107,13 @@ if __name__ == "__main__":
             unsigned core_num = snrt_cluster_core_num();
             
             int err = 0;
-            
+                     
             __snrt_omp_bootstrap(core_idx);
             
             double A = {a};
             int N = {N};
 
-            axpyHandle_t handle = __dace_init_axpy(A, N);
+            axpyHandle_t handle = __dace_init_axpy(N);
 
             __program_axpy(handle, X, Y, A, N);
             
@@ -125,7 +126,7 @@ if __name__ == "__main__":
             }}
             
             __dace_exit_axpy(handle);
-
+            
             printf("Done, err %d\\n", (int)err);
             
             __snrt_omp_destroy(core_idx);
@@ -133,7 +134,7 @@ if __name__ == "__main__":
             return err;
         }}
     """)
-
+    
 
     # Write code to files
     with open(generated_dir / "axpy.cpp", "w") as fd:
@@ -146,13 +147,17 @@ if __name__ == "__main__":
         fd.write(dedent(f"""
             cmake_minimum_required(VERSION 3.13)
             project(Axpy LANGUAGES C CXX ASM)
-            list(APPEND CMAKE_MODULE_PATH {snitch_root}/sw/cmake)
-            include(SnitchUtilities)
-            add_subdirectory({snitch_root}/sw/snRuntime snRuntime)
-            add_snitch_executable(axpy_test axpy_test.cpp axpy.cpp)
-            target_include_directories(axpy_test PUBLIC ${{SNRUNTIME_INCLUDE_DIRS}})
+
+            add_executable(axpy_test axpy_test.cpp axpy.cpp)
+            
+            add_custom_command(
+                TARGET axpy_test
+                POST_BUILD
+                COMMAND ${{CMAKE_OBJDUMP}} -dhS $<TARGET_FILE:axpy_test> > $<TARGET_FILE:axpy_test>.s)
+            
             target_include_directories(axpy_test PUBLIC {dace_root}/dace/runtime/include/)
             target_compile_definitions(axpy_test PUBLIC __SNITCH__)
+            target_compile_options(axpy_test PUBLIC -g -O3)
         """))
     
     build_dir = generated_dir / 'build'
@@ -176,8 +181,7 @@ if __name__ == "__main__":
         
         subprocess.check_call([
             banshee_path,
-            '--no-opt-llvm',
-            '--no-opt-jit',
+            #'--trace',
             '--configuration',
             banshee_config,
             test_file

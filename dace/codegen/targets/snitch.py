@@ -1085,11 +1085,16 @@ class SnitchCodeGen(TargetCodeGenerator):
         hdrs += '#ifdef __cplusplus\n}\n#endif\n'
 
         # Fixup some includes
+<<<<<<< HEAD
         code._code = code._code.replace("#include \"../../include/hash.h\"", '', 1)
         code._code = code._code.replace('<dace/dace.h>', '"dace/dace.h"', 1)
         code._code = code._code.replace('dace::float64', '(double)')
         code._code = code._code.replace('dace::int64', '(int64_t)')
         code._code = code._code.replace('dace::math::pow', 'pow')
+=======
+        code._code = code._code.replace("#include \"../../include/hash.h\"",'',1)
+        code._code = code._code.replace('<dace/dace.h>','"dace/dace.h"\n#include <omp.h>',1)
+>>>>>>> 2e5816d1 (Snitch toolchain fixes)
 
         # change new/delete to malloc/free
         code._code = re.sub(r"new ([^ ]+) [^[]*\[(\d*)\];", r"(\1*)calloc(\2, sizeof(\1));", code._code)
@@ -1101,22 +1106,6 @@ class SnitchCodeGen(TargetCodeGenerator):
         # it is not exactly 0.5 to prevent compiler optimizations
         code._code = re.sub(r"sqrt\s*\((.*)\)", r"pow(\1, 0.50001)", code._code)
 
-        # prepend all uses of the state struct with `struct`
         ccode = code.clean_code
-        state_struct = re.findall(r"struct (\w+) {", ccode)
-        if len(state_struct) == 1:
-            # match all occurences, except for the one prepended by "struct "
-            # dbg(f'found declaration of state struct {state_struct}')
-            state_struct = state_struct[0]
-            ccode = re.sub(r"(?<!struct )({})".format(state_struct), r"struct {}".format(state_struct), ccode)
-
-        # replace stuff
-        replace = [ #('DACE_EXPORTED','DACE_C_EXPORTED'),
-                    ('nullptr','NULL'),
-                    ('constexpr','static const'),
-                    ('inline ','static inline ') # change to static scope
-                    ]
-        for (i,o) in replace:
-            ccode = ccode.replace(i,o)
 
         return (ccode, hdrs)
