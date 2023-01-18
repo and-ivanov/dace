@@ -23,7 +23,7 @@ from typing import List, Union, Tuple
 
 from dace.external.rtllib.templates.control import generate_from_config as rtllib_control
 from dace.external.rtllib.templates.package import generate_from_config as rtllib_package
-from dace.external.rtllib.templates.top import data_packer, generate_from_config as rtllib_top
+from dace.external.rtllib.templates.top import generate_from_config as rtllib_top
 from dace.external.rtllib.templates.synth import generate_from_config as rtllib_synth
 
 REDUCTION_TYPE_TO_HLSLIB = {
