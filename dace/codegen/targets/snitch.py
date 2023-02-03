@@ -22,7 +22,6 @@ from sympy.core.symbol import Symbol
 
 MAX_SSR_STREAMERS = 2
 # number of snitch cores executing parallel regions
-N_THREADS = 8
 
 
 def dbg(*args, **kwargs):
@@ -96,7 +95,8 @@ class SnitchCodeGen(TargetCodeGenerator):
         # for SSR spanning parallel maps, load the thread id here and put the ssr setup in a
         # parallel region
         if para:
-            callsite_stream.write(f'unsigned tid = omp_get_thread_num();')
+            callsite_stream.write(f'int tid = omp_get_thread_num();')
+            callsite_stream.write(f'int nthreads = omp_get_num_threads();')
 
         for ssr_id, ssr in enumerate(self.ssrs):
             if not ssr:
@@ -137,7 +137,9 @@ class SnitchCodeGen(TargetCodeGenerator):
             callsite_stream.write(s)
         # enable ssr only in non-parallel regime, else, do it inside loop body
         if not para:
-            callsite_stream.write('__builtin_ssr_enable();')
+            callsite_stream.write(
+                '__builtin_ssr_enable();\n'
+                'asm volatile("" ::: "memory");')
         # if para:
         #     callsite_stream.write(f'}}')
 
@@ -722,7 +724,10 @@ class SnitchCodeGen(TargetCodeGenerator):
         if ssr_region:
             for ssr_id, ssr in enumerate([x for x in self.ssrs if x]):
                 if ssr["map"].schedule == dtypes.ScheduleType.Snitch_Multicore:
-                    callsite_stream.write('__builtin_ssr_enable();')
+                    callsite_stream.write(
+                        '__builtin_ssr_enable();\n'
+                        'asm volatile("" ::: "memory");'
+                    )
                     break
 
         # Emit internal transient array allocation
@@ -766,7 +771,10 @@ class SnitchCodeGen(TargetCodeGenerator):
         if ssr_region:
             for ssr_id, ssr in enumerate([x for x in self.ssrs if x]):
                 if ssr["map"].schedule == dtypes.ScheduleType.Snitch_Multicore:
-                    callsite_stream.write('__builtin_ssr_disable();')
+                    callsite_stream.write(
+                        'asm volatile("" ::: "memory");\n'
+                        '__builtin_ssr_disable();'
+                    )
                     break
 
         for param, rng in zip(entry_node.map.params, entry_node.map.range):
@@ -780,7 +788,10 @@ class SnitchCodeGen(TargetCodeGenerator):
             if para:
                 callsite_stream.write(f'}} // omp parallel')
             else:
-                callsite_stream.write(f'__builtin_ssr_disable();')
+                callsite_stream.write(
+                    'asm volatile("" ::: "memory");\n'
+                    f'__builtin_ssr_disable();'
+                )
             # deallocate SSRs
             for i, x in enumerate([x for x in self.ssrs if x]):
                 if x["map"] == entry_node:
@@ -935,23 +946,14 @@ class SnitchCodeGen(TargetCodeGenerator):
                         # determine omp schedule if so specified
                         if edge.src.schedule == dtypes.ScheduleType.Snitch_Multicore:
                             loopSize = (end - begin) / strd + 1
-                            loopSize = loopSize
-                            # chunk = sp.floor(loopSize / N_THREADS)
-                            chunk = loopSize / N_THREADS
-                            leftOver = loopSize - chunk * N_THREADS
-                            stride = loopSize
-                            thds = []
-                            # same as for static scheduling in kmp.c
-                            thd_sym = dace.symbol('tid')
+                            # same as for omp static scheduling in kmp.c
+                            num_iters = f'({sym2cpp(loopSize)})'
+                            left_iters = f'({num_iters} % nthreads)'
+                            chunk = f'({num_iters} / nthreads)'
+                            my_chunk = f'({chunk} + (tid < {left_iters}))'
+                            my_begin = f'(tid * {chunk} + min(tid, {left_iters}))'
 
-                            my_chunk = f'{str(chunk + 1)} if {str(thd_sym)} < {str(leftOver)} else {str(chunk)}'
-
-                            beg_lt = str(thd_sym * strd * (chunk + 1))
-                            beg_else = thd_sym * strd * chunk + leftOver
-                            beg_else = str((beg_else if not isinstance(loopSize, dace.symbolic.symbol) else beg_else))
-                            my_begin = f'{beg_lt} if {str(thd_sym)} < {str(leftOver)} else {beg_else}'
-
-                            dbg(f'  OMP loopSize, chunk, leftOver, begin [{loopSize}, {sym2cpp(my_chunk)}, {leftOver}, {my_begin}]'
+                            dbg(f'  OMP loopSize, chunk, leftOver, begin [{loopSize}, {my_chunk}, {left_iters}, {my_begin}]'
                                 )
 
                             # overwrite ssr_bounds, stride stays the same
@@ -1007,7 +1009,6 @@ class SnitchCodeGen(TargetCodeGenerator):
                         dbg(f'    set offset to ssr_config["data_offset"]={ssr_config["data_offset"]}')
 
                         ssr_config["dims"].append({'dim': dim, 'bound': ssr_bound, 'stride': ssr_stride})
-
                     ssr_configs.append(ssr_config)
 
         return ssr_configs
