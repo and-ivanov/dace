@@ -35,7 +35,7 @@ def axpy(A, X, Y):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-N", type=int, default=1024)
+    parser.add_argument("-N", type=int, default=10)
     parser.add_argument("--simulator", type=str, default='banshee')
     parser.add_argument("--toolchain", type=str, default='llvm')
     args = parser.parse_args()
@@ -57,6 +57,7 @@ if __name__ == "__main__":
 
     # Execute parallel
     find_map_by_name(sdfg, 'multiplication')[0].schedule = dace.ScheduleType.Snitch_Multicore
+    #find_map_by_name(sdfg, 'multiplication')[0].schedule = dace.ScheduleType.Snitch
     
     code, header = SnitchCodeGen.gen_code_snitch(sdfg)
     
@@ -65,26 +66,21 @@ if __name__ == "__main__":
     generated_dir = Path('generated_axpy_snitch').resolve()
     
     dace_root = Path(f"{dace.__path__[0]}/..").resolve()
-    fallback_snitch_root = dace_root / "../snitch"
-    snitch_root = os.environ.get('SNITCH_ROOT', fallback_snitch_root)
-    if not Path(snitch_root).is_dir():
-        raise RuntimeError(f"SNITCH_ROOT is not found at {snitch_root}")
-    
-    fallback_snitch_toolchain = dace_root / f'../cmake/my-toolchain-{args.toolchain}-{args.simulator}.cmake'
-    snitch_toolchain = os.environ.get('SNITCH_CMAKE_TOOLCHAIN', fallback_snitch_toolchain)
+
+    snitch_toolchain = os.environ.get('SNITCH_CMAKE_TOOLCHAIN')
     if not Path(snitch_toolchain).is_file():
         raise RuntimeError(f"SNITCH_CMAKE_TOOLCHAIN is not found at {snitch_toolchain}")
     
-    verilator_path = snitch_root / 'hw/system/snitch_cluster/bin/snitch_cluster.vlt'
-    if not Path(verilator_path).is_file():
+    verilator_path = Path(os.environ.get('SNVLT_PATH'))
+    banshee_path = Path(os.environ.get('BANSHEE_PATH'))
+    if not verilator_path.is_file():
         raise RuntimeError(f"verilator is not found at {verilator_path}")
     
-    banshee_path = snitch_root / 'sw/banshee/target/debug/banshee'
-    if not Path(banshee_path).is_file():
+    if not banshee_path.is_file():
         raise RuntimeError(f"banshee is not found at {banshee_path}")
     
-    banshee_config = snitch_root / 'sw/banshee/config/snitch_cluster.yaml'
-    if not Path(banshee_config).is_file():
+    banshee_config = Path(os.environ.get('BANSHEE_CFG'))
+    if not banshee_config.is_file():
         raise RuntimeError(f"banshee config is not found at {banshee_config}")
     
     
@@ -119,7 +115,7 @@ if __name__ == "__main__":
             
             for (int i = 0; i < N; i++) {{
                 if (std::abs(Y[i] - Z[i]) >= 1e-5) {{
-                    printf("Mismatch: %f %f\\n", Y[i], Z[i]);
+                    //printf("Mismatch: %f %f\\n", Y[i], Z[i]);
                     err = 1;
                     break;
                 }}
@@ -127,7 +123,7 @@ if __name__ == "__main__":
             
             __dace_exit_axpy(handle);
             
-            printf("Done, err %d\\n", (int)err);
+            //printf("Done, err %d\\n", (int)err);
             
             __snrt_omp_destroy(core_idx);
                 

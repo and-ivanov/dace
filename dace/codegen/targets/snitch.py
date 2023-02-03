@@ -135,11 +135,10 @@ class SnitchCodeGen(TargetCodeGenerator):
                 dims=len(ssr["dims"]) - 1,
                 data=f'{alloc_name} + {cpp.sym2cpp(ssr["data_offset"])}')
             callsite_stream.write(s)
-        # enable ssr only in non-parallel regime, else, do it inside loop body
-        if not para:
-            callsite_stream.write(
-                '__builtin_ssr_enable();\n'
-                'asm volatile("" ::: "memory");')
+        # Enable SSR outside of the loop body
+        callsite_stream.write(
+            '__builtin_ssr_enable();\n'
+            'asm volatile("" ::: "memory");')
         # if para:
         #     callsite_stream.write(f'}}')
 
@@ -720,16 +719,6 @@ class SnitchCodeGen(TargetCodeGenerator):
 
             # NOTE: CodeIOStream will automatically take care of indentation for us.
 
-        # enable SSR in loop body if any are enabled and we are in a parallel region
-        if ssr_region:
-            for ssr_id, ssr in enumerate([x for x in self.ssrs if x]):
-                if ssr["map"].schedule == dtypes.ScheduleType.Snitch_Multicore:
-                    callsite_stream.write(
-                        '__builtin_ssr_enable();\n'
-                        'asm volatile("" ::: "memory");'
-                    )
-                    break
-
         # Emit internal transient array allocation
         to_allocate = sdutils.local_transients(sdfg, scope, entry_node)
         dbg(f'  to_allocate:{to_allocate} scope childern: {scope.scope_children()[entry_node]}')
@@ -767,16 +756,6 @@ class SnitchCodeGen(TargetCodeGenerator):
 
         dbg(f'  after dispatch_subgraph')
 
-        # disable SSR in loop body if any are enabled and we are in a parallel region
-        if ssr_region:
-            for ssr_id, ssr in enumerate([x for x in self.ssrs if x]):
-                if ssr["map"].schedule == dtypes.ScheduleType.Snitch_Multicore:
-                    callsite_stream.write(
-                        'asm volatile("" ::: "memory");\n'
-                        '__builtin_ssr_disable();'
-                    )
-                    break
-
         for param, rng in zip(entry_node.map.params, entry_node.map.range):
             dbg(f'  closing for parameter {param}')
             callsite_stream.write(f'''// end loopy-loop
@@ -785,13 +764,12 @@ class SnitchCodeGen(TargetCodeGenerator):
         if ssr_region:
             # callsite_stream.write(f'// end ssr allocated: {len(self.ssr_configs)}')
             # if there is at least one SSR active, disable the region here
+            callsite_stream.write(
+                'asm volatile("" ::: "memory");\n'
+                f'__builtin_ssr_disable();'
+            )
             if para:
                 callsite_stream.write(f'}} // omp parallel')
-            else:
-                callsite_stream.write(
-                    'asm volatile("" ::: "memory");\n'
-                    f'__builtin_ssr_disable();'
-                )
             # deallocate SSRs
             for i, x in enumerate([x for x in self.ssrs if x]):
                 if x["map"] == entry_node:
