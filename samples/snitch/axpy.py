@@ -105,13 +105,25 @@ if __name__ == "__main__":
             int err = 0;
                      
             __snrt_omp_bootstrap(core_idx);
-            
+                        
             double A = {a};
             int N = {N};
 
+            double* X_tcdm = (double*) snrt_l1alloc(sizeof(double) * N);
+            double* Y_tcdm = (double*) snrt_l1alloc(sizeof(double) * N);
+
+            dm_memcpy_async(X_tcdm, X, sizeof(double) * N);
+            dm_memcpy_async(Y_tcdm, Y, sizeof(double) * N);
+            dm_wait();
+
             axpyHandle_t handle = __dace_init_axpy(N);
 
-            __program_axpy(handle, X, Y, A, N);
+            __program_axpy(handle, X_tcdm, Y_tcdm, A, N);
+
+            __dace_exit_axpy(handle);
+            
+            dm_memcpy_async(Y, Y_tcdm, sizeof(double) * N);
+            dm_wait();
             
             for (int i = 0; i < N; i++) {{
                 if (std::abs(Y[i] - Z[i]) >= 1e-5) {{
@@ -120,8 +132,6 @@ if __name__ == "__main__":
                     break;
                 }}
             }}
-            
-            __dace_exit_axpy(handle);
             
             //printf("Done, err %d\\n", (int)err);
             
