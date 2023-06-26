@@ -1064,16 +1064,8 @@ class SnitchCodeGen(TargetCodeGenerator):
         hdrs += '#ifdef __cplusplus\n}\n#endif\n'
 
         # Fixup some includes
-<<<<<<< HEAD
-        code._code = code._code.replace("#include \"../../include/hash.h\"", '', 1)
-        code._code = code._code.replace('<dace/dace.h>', '"dace/dace.h"', 1)
-        code._code = code._code.replace('dace::float64', '(double)')
-        code._code = code._code.replace('dace::int64', '(int64_t)')
-        code._code = code._code.replace('dace::math::pow', 'pow')
-=======
         code._code = code._code.replace("#include \"../../include/hash.h\"",'',1)
         code._code = code._code.replace('<dace/dace.h>','"dace/dace.h"\n#include <omp.h>',1)
->>>>>>> 2e5816d1 (Snitch toolchain fixes)
 
         # fix simulation until fsqrt.d support is added in banshee 
         # it is not exactly 0.5 to prevent compiler optimizations
