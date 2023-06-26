@@ -1075,12 +1075,6 @@ class SnitchCodeGen(TargetCodeGenerator):
         code._code = code._code.replace('<dace/dace.h>','"dace/dace.h"\n#include <omp.h>',1)
 >>>>>>> 2e5816d1 (Snitch toolchain fixes)
 
-        # change new/delete to malloc/free
-        code._code = re.sub(r"new ([^ ]+) [^[]*\[(\d*)\];", r"(\1*)calloc(\2, sizeof(\1));", code._code)
-        code._code = re.sub(r"new ([a-zA-Z0-9 _]*);", r"(\1*)malloc(sizeof(\1));", code._code)
-        code._code = re.sub(r"delete (.*);", r"free(\1);", code._code)
-        code._code = re.sub(r"delete\[\] (.*);", r"free(\1);", code._code)
-
         # fix simulation until fsqrt.d support is added in banshee 
         # it is not exactly 0.5 to prevent compiler optimizations
         code._code = re.sub(r"sqrt\s*\((.*)\)", r"pow(\1, 0.50001)", code._code)
