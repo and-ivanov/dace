@@ -1067,10 +1067,6 @@ class SnitchCodeGen(TargetCodeGenerator):
         code._code = code._code.replace("#include \"../../include/hash.h\"",'',1)
         code._code = code._code.replace('<dace/dace.h>','"dace/dace.h"\n#include <omp.h>',1)
 
-        # fix simulation until fsqrt.d support is added in banshee 
-        # it is not exactly 0.5 to prevent compiler optimizations
-        code._code = re.sub(r"sqrt\s*\((.*)\)", r"pow(\1, 0.50001)", code._code)
-
         ccode = code.clean_code
 
         return (ccode, hdrs)
