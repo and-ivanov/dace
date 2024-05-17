@@ -641,6 +641,9 @@ class RedundantSecondArray(pm.SingleStateTransformation):
         in_desc = in_array.desc(sdfg)
         out_desc = out_array.desc(sdfg)
 
+        if in_desc.shape != out_desc.shape:
+            return False
+
         # Ensure in degree is one (only one source, which is in_array)
         if graph.in_degree(out_array) != 1:
             return False

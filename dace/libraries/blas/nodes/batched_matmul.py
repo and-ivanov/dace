@@ -23,10 +23,10 @@ class ExpandBatchedMatMulPure(ExpandTransformation):
     def make_sdfg(node, parent_state, parent_sdfg):
         # Get metadata from parent SDFG
         ((edge_a, outer_array_a, shape_a, strides_a), (edge_b, outer_array_b, shape_b, strides_b),
-         cdata) = _get_matmul_operands(node, parent_state, parent_sdfg)
+         (edge_c, outer_array_c, shape_c, strides_c)) = _get_matmul_operands(node, parent_state, parent_sdfg)
         outedge = parent_state.out_edges(node)[0]
         cdesc = parent_sdfg.arrays[outedge.data.data]
-        bopt = _get_batchmm_opts(shape_a, strides_a, shape_b, strides_b, cdesc.shape, cdesc.strides)
+        bopt = _get_batchmm_opts(shape_a, strides_a, shape_b, strides_b, shape_c, strides_c)
 
         if shape_a[-1] != shape_b[-2]:
             raise SyntaxError('Matrix sizes must match')
@@ -37,7 +37,7 @@ class ExpandBatchedMatMulPure(ExpandTransformation):
 
         dtype_a = outer_array_a.dtype.type
         dtype_b = outer_array_b.dtype.type
-        dtype_c = cdesc.dtype.type
+        dtype_c = outer_array_c.dtype.type
 
         if outer_array_a.storage != outer_array_b.storage:
             raise ValueError("Input matrices must have same storage")
@@ -48,7 +48,7 @@ class ExpandBatchedMatMulPure(ExpandTransformation):
 
         _, array_a = sdfg.add_array("_a", shape_a, dtype_a, strides=strides_a, storage=storage)
         _, array_b = sdfg.add_array("_b", shape_b, dtype_b, strides=strides_b, storage=storage)
-        _, array_c = sdfg.add_array("_c", shape_c, dtype_c, strides=cdata[-1], storage=storage)
+        _, array_c = sdfg.add_array("_c", shape_c, dtype_c, strides=strides_c, storage=storage)
 
         # Add an initialization state
         init_state = sdfg.add_state()
